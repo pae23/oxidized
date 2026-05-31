@@ -46,6 +46,44 @@ The above strips out snmp community strings from your saved configs.
 
 **NOTE:** Removing secrets reduces the usefulness as a full configuration backup, but it may make sharing configs easier.
 
+## Encrypting secrets
+
+Instead of *removing* secrets, Oxidized can *encrypt* them in place, so the backup keeps the
+secret (recoverable) without exposing it in clear in your version control. Enable it with the
+`encrypt_secret` var:
+
+```yaml
+vars:
+  encrypt_secret:
+    # any tool that reads a secret on stdin and writes ciphertext on stdout:
+    command: "age -R /etc/oxidized/recipients.txt"
+    # optional, recommended: keeps a stable token while the secret is unchanged (no spurious commit)
+    fingerprint_key_file: "/etc/oxidized/secret-fp.key"
+    cache_file: "/etc/oxidized/secret-cache.json"
+```
+
+Each matched secret is replaced by a token `ENC[v1:<fingerprint>:<base64 ciphertext>]`. Oxidized
+never decrypts: only a holder of the private key behind `command` can (e.g.
+`age -d -i ~/.ssh/id_ed25519`, `gpg -d`). No crypto dependency is added — you choose the backend
+(`age`, `gpg`, openssl, a script…).
+
+The same model `cmd :secret` blocks drive both features: they run when **either** `remove_secret`
+or `encrypt_secret` is set. A block opts in by passing the captured secret to `hide`, which
+returns an encrypted token when `encrypt_secret` is set, or the redaction marker otherwise:
+
+```ruby
+  cmd :secret do |cfg|
+    cfg.gsub!(/(password \d+) (\S+).*/) { "#{$1} #{hide($2)}" }
+    cfg
+  end
+```
+
+Notes:
+- `fingerprint_key_file` holds a keyed-HMAC key used only to detect change (it never decrypts);
+  without it, a non-deterministic backend (age/gpg) would re-encrypt every run and churn commits.
+- If the command is missing or fails, the value is **redacted** (never written back in clear).
+- A changed token in a diff is a reliable signal that the device's secret actually changed.
+
 ## Timeout and Time limit
 You can configure when oxidized will `timeout` while fetching a configuration
 (default: 20 seconds), and how much absolute time (`timelimit`) the fetching

@@ -3,6 +3,7 @@ require_relative 'outputs'
 require_relative 'dslsetup'
 require_relative 'dslcommands'
 require_relative 'macros'
+require_relative '../secret_crypt'
 
 module Oxidized
   class Model
@@ -63,13 +64,27 @@ module Oxidized
       self.class.cmds[:all].each do |all_block|
         out = instance_exec out, string, &all_block
       end
-      if vars :remove_secret
+      if vars(:remove_secret) || vars(:encrypt_secret)
         self.class.cmds[:secret].each do |all_block|
           out = instance_exec out, string, &all_block
         end
       end
       out = instance_exec out, &block if block
       process_cmd_output out, string
+    end
+
+    # Replacement for a captured secret value inside a `cmd :secret` block. Returns an encrypted,
+    # recoverable token when `encrypt_secret` is configured, otherwise the redaction marker.
+    # Models use it so the same secret pattern supports both removal and encryption, e.g.:
+    #   cmd :secret do |cfg|
+    #     cfg.gsub!(/^(snmp-server community )(\S+)/) { "#{$1}#{hide($2)}" }
+    #   end
+    def hide(value, marker = '<secret hidden>')
+      if (enc = vars(:encrypt_secret))
+        Oxidized::SecretCrypt.enc(value, enc)
+      else
+        marker
+      end
     end
 
     def metadata(position)

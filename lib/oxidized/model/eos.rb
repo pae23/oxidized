@@ -13,8 +13,10 @@ class EOS < Oxidized::Model
 
   cmd :secret do |cfg|
     cfg.gsub! /^(snmp-server community).*/, '\\1 <configuration removed>'
-    cfg.gsub! /(secret \w+) (\S+).*/, '\\1 <secret hidden>'
-    cfg.gsub! /(password \d+) (\S+).*/, '\\1 <secret hidden>'
+    # `hide` redacts (identical output) unless `encrypt_secret` is set, in which case it returns
+    # a recoverable ENC[...] token. See Oxidized::Model#hide / docs/Configuration.md.
+    cfg.gsub!(/(secret \w+) (\S+).*/) { "#{$1} #{hide($2)}" }
+    cfg.gsub!(/(password \d+) (\S+).*/) { "#{$1} #{hide($2)}" }
     cfg.gsub! /^(enable (?:secret|password)).*/, '\\1 <configuration removed>'
     cfg.gsub! /^(service unsupported-transceiver).*/, '\\1 <license key removed>'
     cfg.gsub! /^(tacacs-server key \d+).*/, '\\1 <configuration removed>'
